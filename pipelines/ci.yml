@@ -4,7 +4,7 @@ trigger:
       - main
 
 pool:
-  vmImage: Azure Pipelines
+  vmImage: 'ubuntu-22.04'
 
 jobs:
   - job: TestAPI
