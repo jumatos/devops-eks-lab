@@ -29,3 +29,17 @@ Write your own explanation of:
 
 Configure branch protection and complete the first pull request.
 Automated build validation will follow once a CI pipeline exists.
+
+## Solo-review exception
+
+This lab allows the pull request author to approve their own changes
+because only one person is working on the project.
+
+This demonstrates the approval workflow but does not provide
+independent review. In a team environment, another person should
+review and approve the changes.
+
+## Next steps
+
+Link this documentation change to Azure Boards Task #2.
+Implement automated pull request validation through Azure Pipelines.
