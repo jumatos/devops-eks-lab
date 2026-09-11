@@ -1,0 +1,45 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-22.04
+
+jobs:
+  - job: TestAPI
+    displayName: Validate Python API
+    timeoutInMinutes: 10
+
+    steps:
+      - checkout: self
+
+      - task: UsePythonVersion@0
+        displayName: Select Python 3.11
+        inputs:
+          versionSpec: '3.11'
+          architecture: x64
+
+      - bash: |
+          set -euo pipefail
+          python --version
+          python -m pip install -r app/requirements-dev.txt
+          python -m pip check
+        displayName: Install and verify dependencies
+
+      - bash: |
+          set -euo pipefail
+          mkdir -p test-results
+          python -m pytest app/tests -v \
+            --junitxml=test-results/pytest.xml
+        displayName: Run API tests
+
+      - task: PublishTestResults@2
+        displayName: Publish pytest results
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: JUnit
+          testResultsFiles: 'test-results/pytest.xml'
+          failTaskOnFailedTests: true
+          failTaskOnMissingResultsFile: true
+          testRunTitle: API health tests
