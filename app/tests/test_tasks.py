@@ -162,4 +162,4 @@ def test_invalid_task_id_returns_422(client, method):
         **options,
     )
 
-    assert response.status_code == 422    
+    assert response.status_code == 422
