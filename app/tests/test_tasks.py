@@ -1,17 +1,6 @@
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi.testclient import TestClient
-
-from app.main import app, tasks
-
-
-@pytest.fixture
-def client():
-    tasks.clear()
-    with TestClient(app) as test_client:
-        yield test_client
-    tasks.clear()
 
 
 def test_list_tasks_initially_empty(client):
@@ -163,3 +152,28 @@ def test_invalid_task_id_returns_422(client, method):
     )
 
     assert response.status_code == 422
+
+
+def test_api_and_repository_share_storage(client, repository):
+    response = client.post(
+        "/tasks",
+        json={"title": "Verify API persistence"},
+    )
+
+    assert response.status_code == 201
+
+    created = response.json()
+    task_id = UUID(created["id"])
+
+    stored = repository.get(task_id)
+    assert stored.model_dump(mode="json") == created
+
+    repository.update_status(task_id, "completed")
+
+    fetched = client.get(f"/tasks/{task_id}")
+
+    assert fetched.status_code == 200
+    assert fetched.json() == {
+        **created,
+        "status": "completed",
+    }
