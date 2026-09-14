@@ -1,7 +1,16 @@
+import logging
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, Request, Response, status
+from botocore.exceptions import BotoCoreError, ClientError
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import JSONResponse
 
 from app.dependencies import get_repository
@@ -12,6 +21,8 @@ from app.repositories import (
     TaskNotFoundError,
 )
 
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Task API",
@@ -50,6 +61,25 @@ async def task_already_exists_handler(
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def readiness(
+    repository: RepositoryDependency,
+) -> dict[str, str]:
+    try:
+        repository.check_readiness()
+    except (BotoCoreError, ClientError) as error:
+        logger.warning(
+            "Readiness check failed: %s",
+            type(error).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Task storage is unavailable",
+        ) from error
+
+    return {"status": "ready"}
 
 
 @app.post(
