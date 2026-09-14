@@ -18,6 +18,12 @@ class DynamoDBTaskRepository:
     def __init__(self, table):
         self.table = table
 
+    def check_readiness(self) -> None:
+        self.table.get_item(
+            Key={"id": "__readiness__"},
+            ConsistentRead=False,
+        )
+
     def create(self, task: TaskResponse) -> TaskResponse:
         try:
             self.table.put_item(
