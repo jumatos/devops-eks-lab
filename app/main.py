@@ -2,6 +2,10 @@ import logging
 from typing import Annotated
 from uuid import UUID, uuid4
 
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+from app.metrics import REGISTRY, MetricsMiddleware
+
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import (
     Depends,
@@ -29,6 +33,8 @@ app = FastAPI(
     description="Task management API for the DevOps EKS lab.",
     version="0.3.0",
 )
+
+app.add_middleware(MetricsMiddleware)
 
 RepositoryDependency = Annotated[
     DynamoDBTaskRepository,
@@ -62,6 +68,13 @@ async def task_already_exists_handler(
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    return Response(
+        content=generate_latest(REGISTRY),
+        headers={"Content-Type": CONTENT_TYPE_LATEST},
+    )
 
 @app.get("/ready")
 def readiness(
