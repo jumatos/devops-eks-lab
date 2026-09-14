@@ -18,3 +18,4 @@ __pycache__/
 crash.log
 # Kube
 kubeconfig*
+.venv-py311/

@@ -1,52 +1,50 @@
-from typing import Literal
+from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException, Response, status
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import Depends, FastAPI, Request, Response, status
+from fastapi.responses import JSONResponse
+
+from app.dependencies import get_repository
+from app.models import TaskCreate, TaskResponse, TaskUpdate
+from app.repositories import (
+    DynamoDBTaskRepository,
+    TaskAlreadyExistsError,
+    TaskNotFoundError,
+)
 
 
 app = FastAPI(
     title="Task API",
     description="Task management API for the DevOps EKS lab.",
-    version="0.2.0",
+    version="0.3.0",
 )
 
+RepositoryDependency = Annotated[
+    DynamoDBTaskRepository,
+    Depends(get_repository),
+]
 
-class TaskCreate(BaseModel):
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        extra="forbid",
+
+@app.exception_handler(TaskNotFoundError)
+async def task_not_found_handler(
+    request: Request,
+    exc: TaskNotFoundError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={"detail": "Task not found"},
     )
 
-    title: str = Field(min_length=1, max_length=120)
 
-
-class TaskResponse(BaseModel):
-    id: UUID
-    title: str
-    status: Literal["pending", "completed"]
-
-
-class TaskUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    status: Literal["pending", "completed"]
-
-
-# Temporary storage: data is lost when the process restarts.
-tasks: dict[UUID, TaskResponse] = {}
-
-
-def find_task(task_id: UUID) -> TaskResponse:
-    task = tasks.get(task_id)
-
-    if task is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Task not found",
-        )
-
-    return task
+@app.exception_handler(TaskAlreadyExistsError)
+async def task_already_exists_handler(
+    request: Request,
+    exc: TaskAlreadyExistsError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": "Task already exists"},
+    )
 
 
 @app.get("/health")
@@ -59,40 +57,41 @@ def health() -> dict[str, str]:
     response_model=TaskResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_task(payload: TaskCreate) -> TaskResponse:
+def create_task(
+    payload: TaskCreate,
+    repository: RepositoryDependency,
+) -> TaskResponse:
     task = TaskResponse(
         id=uuid4(),
         title=payload.title,
         status="pending",
     )
 
-    tasks[task.id] = task
-    return task
+    return repository.create(task)
 
 
 @app.get("/tasks", response_model=list[TaskResponse])
-def list_tasks() -> list[TaskResponse]:
-    return list(tasks.values())
+def list_tasks(
+    repository: RepositoryDependency,
+) -> list[TaskResponse]:
+    return repository.list_all()
 
 
 @app.get("/tasks/{task_id}", response_model=TaskResponse)
-def get_task(task_id: UUID) -> TaskResponse:
-    return find_task(task_id)
+def get_task(
+    task_id: UUID,
+    repository: RepositoryDependency,
+) -> TaskResponse:
+    return repository.get(task_id)
 
 
 @app.patch("/tasks/{task_id}", response_model=TaskResponse)
 def update_task(
     task_id: UUID,
     payload: TaskUpdate,
+    repository: RepositoryDependency,
 ) -> TaskResponse:
-    task = find_task(task_id)
-
-    updated_task = task.model_copy(
-        update={"status": payload.status},
-    )
-
-    tasks[task_id] = updated_task
-    return updated_task
+    return repository.update_status(task_id, payload.status)
 
 
 @app.delete(
@@ -100,8 +99,10 @@ def update_task(
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
 )
-def delete_task(task_id: UUID) -> Response:
-    find_task(task_id)
-    del tasks[task_id]
+def delete_task(
+    task_id: UUID,
+    repository: RepositoryDependency,
+) -> Response:
+    repository.delete(task_id)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
