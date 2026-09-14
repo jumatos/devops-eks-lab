@@ -1,0 +1,10 @@
+**
+!Dockerfile
+!.dockerignore
+!app/
+!app/main.py
+!app/models.py
+!app/dependencies.py
+!app/repositories.py
+!app/metrics.py
+!app/requirements.txt
