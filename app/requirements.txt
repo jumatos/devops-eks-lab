@@ -19,3 +19,4 @@ python-dateutil==2.9.0.post0
 s3transfer==0.16.1
 six==1.17.0
 urllib3==1.26.20
+prometheus-client==0.26.0
