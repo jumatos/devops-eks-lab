@@ -4,7 +4,12 @@ trigger:
       - main
 
 pool:
-  vmImage: 'ubuntu-22.04'
+  vmImage: ubuntu-22.04
+
+variables:
+  ecrRegistry: '703671937762.dkr.ecr.us-east-1.amazonaws.com'
+  ecrRepositoryName: devops-eks-lab-api
+  awsRegion: us-east-1
 
 jobs:
   - job: TestAPI
@@ -42,4 +47,109 @@ jobs:
           testResultsFiles: 'test-results/pytest.xml'
           failTaskOnFailedTests: true
           failTaskOnMissingResultsFile: true
-          testRunTitle: API health tests
+          testRunTitle: API tests
+
+  - job: BuildAndPublish
+    displayName: Build, scan and publish API image
+    dependsOn: TestAPI
+    condition: succeeded()
+    timeoutInMinutes: 25
+
+    steps:
+      - checkout: self
+
+      - bash: |
+          set -euo pipefail
+
+          image_tag="sha-${BUILD_SOURCEVERSION:0:12}-build-${BUILD_BUILDID}-attempt-${SYSTEM_JOBATTEMPT}"
+          image_uri="${ECR_REGISTRY}/${ECR_REPOSITORY_NAME}:${image_tag}"
+
+          echo "Image: $image_uri"
+          echo "##vso[task.setvariable variable=imageTag]$image_tag"
+          echo "##vso[task.setvariable variable=imageUri]$image_uri"
+
+          docker build --pull --tag "$image_uri" .
+
+          docker run --rm "$image_uri" python -m pip check
+          docker run --rm "$image_uri" \
+            python -c "from app.main import app; print(app.title)"
+        displayName: Build and verify container image
+        env:
+          ECR_REGISTRY: $(ecrRegistry)
+          ECR_REPOSITORY_NAME: $(ecrRepositoryName)
+
+      - bash: |
+          set -euo pipefail
+
+          mkdir -p "$SCAN_DIR" "$REPORT_DIR"
+          docker image save --output "$SCAN_DIR/task-api.tar" "$IMAGE_URI"
+
+          docker run --rm \
+            -v "$SCAN_DIR:/scan:ro" \
+            aquasec/trivy:0.74.0 image \
+            --input /scan/task-api.tar \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --exit-code 0 \
+            --timeout 10m \
+            --format json \
+            > "$REPORT_DIR/trivy.json"
+        displayName: Scan image — informational for lab
+        env:
+          IMAGE_URI: $(imageUri)
+          SCAN_DIR: $(Agent.TempDirectory)/trivy-input
+          REPORT_DIR: $(Build.ArtifactStagingDirectory)/security
+
+      - task: PublishPipelineArtifact@1
+        displayName: Publish vulnerability report
+        inputs:
+          targetPath: $(Build.ArtifactStagingDirectory)/security
+          artifact: security-report-$(System.JobAttempt)
+
+      - task: AWSShellScript@1
+        displayName: Publish image to ECR using OIDC
+        condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        inputs:
+          awsCredentials: aws-ecr-publisher
+          regionName: $(awsRegion)
+          scriptType: inline
+          inlineScript: |
+            set -euo pipefail
+
+            export DOCKER_CONFIG
+            DOCKER_CONFIG="$(mktemp -d)"
+            trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+
+            aws sts get-caller-identity
+
+            aws ecr get-login-password --region "$AWS_REGION" \
+              | docker login \
+                  --username AWS \
+                  --password-stdin "$ECR_REGISTRY"
+
+            docker push "$IMAGE_URI"
+
+            mkdir -p "$OUTPUT_DIR"
+
+            aws ecr describe-images \
+              --region "$AWS_REGION" \
+              --repository-name "$ECR_REPOSITORY_NAME" \
+              --image-ids imageTag="$IMAGE_TAG" \
+              --query 'imageDetails[0].{Tags:imageTags,Digest:imageDigest}' \
+              --output json \
+              > "$OUTPUT_DIR/image.json"
+
+            cat "$OUTPUT_DIR/image.json"
+        env:
+          ECR_REGISTRY: $(ecrRegistry)
+          ECR_REPOSITORY_NAME: $(ecrRepositoryName)
+          IMAGE_URI: $(imageUri)
+          IMAGE_TAG: $(imageTag)
+          OUTPUT_DIR: $(Build.ArtifactStagingDirectory)/published-image
+
+      - task: PublishPipelineArtifact@1
+        displayName: Publish image metadata
+        condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        inputs:
+          targetPath: $(Build.ArtifactStagingDirectory)/published-image
+          artifact: published-image-$(System.JobAttempt)
