@@ -1,0 +1,23 @@
+trigger: none
+pr: none
+
+pool:
+  vmImage: ubuntu-22.04
+
+jobs:
+  - job: VerifyAWSIdentity
+    displayName: Verify AWS OIDC authentication
+    timeoutInMinutes: 5
+
+    steps:
+      - checkout: none
+
+      - task: AWSShellScript@1
+        displayName: Verify AWS caller identity
+        inputs:
+          awsCredentials: aws-ecr-publisher
+          regionName: us-east-1
+          scriptType: inline
+          inlineScript: |
+            set -euo pipefail
+            aws sts get-caller-identity
