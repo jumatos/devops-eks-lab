@@ -19,3 +19,10 @@ crash.log
 # Kube
 kubeconfig*
 .venv-py311/
+# Terraform local files
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
