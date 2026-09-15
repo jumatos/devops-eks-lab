@@ -26,4 +26,6 @@ kubeconfig*
 *.tfplan
 crash.log
 crash.*.log
+
+# Local development scripts
 /scripts/init-dev.sh
