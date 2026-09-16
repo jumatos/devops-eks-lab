@@ -13,8 +13,8 @@ variables:
 
 jobs:
   - job: TestAPI
-    displayName: Validate Python API
-    timeoutInMinutes: 10
+    displayName: Validate API and Helm chart
+    timeoutInMinutes: 15
 
     steps:
       - checkout: self
@@ -27,6 +27,7 @@ jobs:
 
       - bash: |
           set -euo pipefail
+
           python --version
           python -m pip install -r app/requirements-dev.txt
           python -m pip check
@@ -34,7 +35,9 @@ jobs:
 
       - bash: |
           set -euo pipefail
+
           mkdir -p test-results
+
           python -m pytest app/tests -v \
             --junitxml=test-results/pytest.xml
         displayName: Run API tests
@@ -48,6 +51,42 @@ jobs:
           failTaskOnFailedTests: true
           failTaskOnMissingResultsFile: true
           testRunTitle: API tests
+
+      - task: HelmInstaller@1
+        displayName: Install Helm 4.3.0
+        inputs:
+          helmVersionToInstall: '4.3.0'
+
+      - bash: |
+          set -euo pipefail
+
+          helm version --short
+          mkdir -p "$OUTPUT_DIR"
+
+          helm lint charts/task-api --strict
+
+          helm template task-api charts/task-api \
+            --namespace task-api \
+            > "$OUTPUT_DIR/default.yaml"
+
+          helm lint charts/task-api --strict \
+            --set image.pullPolicy=Never \
+            --set aws.existingCredentialsSecret=task-api-aws
+
+          helm template task-api charts/task-api \
+            --namespace task-api \
+            --set image.pullPolicy=Never \
+            --set aws.existingCredentialsSecret=task-api-aws \
+            > "$OUTPUT_DIR/minikube.yaml"
+        displayName: Validate and render Helm chart
+        env:
+          OUTPUT_DIR: $(Build.ArtifactStagingDirectory)/helm
+
+      - task: PublishPipelineArtifact@1
+        displayName: Publish rendered Helm manifests
+        inputs:
+          targetPath: $(Build.ArtifactStagingDirectory)/helm
+          artifact: helm-manifests-$(System.JobAttempt)
 
   - job: BuildAndPublish
     displayName: Build, scan and publish API image
@@ -71,6 +110,7 @@ jobs:
           docker build --pull --tag "$image_uri" .
 
           docker run --rm "$image_uri" python -m pip check
+
           docker run --rm "$image_uri" \
             python -c "from app.main import app; print(app.title)"
         displayName: Build and verify container image
@@ -82,7 +122,10 @@ jobs:
           set -euo pipefail
 
           mkdir -p "$SCAN_DIR" "$REPORT_DIR"
-          docker image save --output "$SCAN_DIR/task-api.tar" "$IMAGE_URI"
+
+          docker image save \
+            --output "$SCAN_DIR/task-api.tar" \
+            "$IMAGE_URI"
 
           docker run --rm \
             -v "$SCAN_DIR:/scan:ro" \
