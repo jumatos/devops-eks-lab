@@ -1,0 +1,12 @@
+server:
+  service:
+    type: ClusterIP
+
+dex:
+  enabled: false
+
+notifications:
+  enabled: false
+
+applicationSet:
+  enabled: false
