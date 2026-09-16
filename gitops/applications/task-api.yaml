@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: task-api
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/jumatos/devops-eks-lab.git
+    targetRevision: main
+    path: charts/task-api
+    helm:
+      valueFiles:
+        - values-eks.yaml
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: task-api
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+      - PruneLast=true
+
+  revisionHistoryLimit: 5

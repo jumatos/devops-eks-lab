@@ -1,0 +1,17 @@
+replicaCount: 1
+
+image:
+  repository: 703671937762.dkr.ecr.us-east-1.amazonaws.com/devops-eks-lab-api
+  tag: sha-c93988dd8a53-build-37-attempt-1
+  pullPolicy: IfNotPresent
+
+aws:
+  region: us-east-1
+  existingCredentialsSecret: ""
+
+dynamodb:
+  tableName: devops-eks-lab-tasks
+
+serviceAccount:
+  create: true
+  name: task-api
