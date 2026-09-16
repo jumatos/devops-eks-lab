@@ -1,0 +1,24 @@
+replicaCount: 1
+
+image:
+  repository: devops-eks-lab-api
+  tag: trixie
+  pullPolicy: IfNotPresent
+
+aws:
+  region: us-east-1
+  existingCredentialsSecret: ""
+
+dynamodb:
+  tableName: devops-eks-lab-tasks
+
+service:
+  port: 8000
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
